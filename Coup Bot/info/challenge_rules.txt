@@ -1,0 +1,24 @@
+# Influenced by https://www.ultraboardgames.com/coup/game-rules.php
+
+----------------------------------------------------------------------------
+
+General:
+Any Action or Response using character influence can be challenged.
+Any player can challenge another player
+
+----------------------------------------------------------------------------
+
+Challenge flow:
+  - action occurs
+  - players may challenge
+  - other player responds (if applicable)
+  - players may challenge
+
+----------------------------------------------------------------------------
+
+Challenged player loses:
+  - challenged player chooses a card to die, and their action fails (undone)
+  - no effect to challenger
+Challenged player wins:
+  - challenged player shuffles card into deck and replaces randomly
+  - challenger chooses a card to die

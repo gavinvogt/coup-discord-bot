@@ -1,0 +1,8 @@
+The base class is defined in response.py (Reponse)
+
+All of the other class extend Response to provide unique functionality
+representing a possible response to another player's Action in Coup.
+
+Ex:
+  - Challenging another player's claim
+  - Claiming ambassador to block a captain from taking two of your coins

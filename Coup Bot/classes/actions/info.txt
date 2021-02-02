@@ -1,0 +1,8 @@
+The base class is defined in action.py (Action)
+
+All of the other class extend Action to provide unique functionality
+representing a possible action in Coup.
+
+Ex:
+  - Claiming duke to take three coins
+  - Claiming assassin to assassinate another player

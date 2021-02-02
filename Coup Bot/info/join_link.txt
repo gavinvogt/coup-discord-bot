@@ -1,0 +1,7 @@
+
+
+
+
+
+Link
+https://discordapp.com/oauth2/authorize?client_id=800190158481129502&scope=bot&permissions=67648
