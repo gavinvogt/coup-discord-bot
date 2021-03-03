@@ -20,10 +20,10 @@ class Die(Response):
         '''
         Constructs a die Response
         player: Player representing the player who is killing a card
-        indexes_to_kill: ints, representing the indexes of the player's
+        indexes_to_kill: list of ints, representing the indexes of the player's
         influence card to kill (indexed starting at 0)
         '''
-        super().__init__(self, player)
+        super().__init__(player)
         self._indexes = indexes_to_kill
 
     @staticmethod
@@ -48,7 +48,15 @@ class Die(Response):
             self._response_by[index].alive = False
 
         # change the number of cards the player needs to kill
-        self._response_by.must_kill -= len(card_indexes)
+        self._response_by.must_kill -= len(self._indexes)
+
+    @staticmethod
+    def is_super():
+        '''
+        Checks if this Response is a super (such as Double Contessa), and
+        requires a card swap either way
+        '''
+        return False
 
     def attempt_message(self):
         '''
@@ -56,7 +64,7 @@ class Die(Response):
         the response is attempted
         '''
         types = [ self._response_by[i].type.capitalize() for i in self._indexes ]
-        return f"{self._response_by.get_user().mention} let their {','.join(types)} die"
+        return f"{self._response_by.get_user().mention} let their `{'`, `'.join(types)}` die"
 
     def complete_message(self):
         '''

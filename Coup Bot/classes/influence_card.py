@@ -20,6 +20,12 @@ class InfluenceCard:
         self._type = influence_type
         self._alive = True
 
+    def __repr__(self):
+        '''
+        String representation of the card
+        '''
+        return f"{self.__class__.__name__}('{self._type}', alive={self._alive})"
+
     @property
     def type(self):
         '''
@@ -40,4 +46,3 @@ class InfluenceCard:
         Sets the `alive` property
         '''
         self._alive = is_alive
-

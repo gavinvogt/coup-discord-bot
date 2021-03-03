@@ -16,6 +16,7 @@ class Action(metaclass=abc.ABCMeta):
     Public properties:
         - done_by
         - done_to
+        - swapped
 
     Methods that must be defined:
         - attempt_message()
@@ -37,12 +38,13 @@ class Action(metaclass=abc.ABCMeta):
         '''
         self._done_by = player1
         self._done_to = player2
+        self.swapped = False
 
     def __repr__(self):
         '''
         String representation of the Action
         '''
-        return f"{self.__class__.__name}({repr(self._done_by)}, {repr(self._done_to)})"
+        return f"{self.__class__.__name__}( {repr(self._done_by)}, {repr(self._done_to)} )"
 
     @property
     def done_by(self):
@@ -123,9 +125,18 @@ class Action(metaclass=abc.ABCMeta):
         '''
         raise NotImplementedError
 
+    @staticmethod
+    @abc.abstractmethod
+    def is_super():
+        '''
+        Checks if this Action is a super (such as Double Contessa), and
+        requires a card swap either way
+        '''
+        raise NotImplementedError
+
     @classmethod
     @abc.abstractmethod
-    def available_responses(self, channel_mention):
+    def available_responses(cls, channel_mention):
         '''
         Returns the embed holding available responses to
         an action

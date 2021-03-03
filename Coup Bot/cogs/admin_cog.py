@@ -30,6 +30,16 @@ class AdminCog(BaseCog, name="admin"):
         '''
         return await self.bot.is_owner(ctx.author)
 
+    @commands.command(name="debug", help="Print out the debug game summary")
+    @commands.guild_only()
+    async def debug_current_game(self, ctx):
+        game = self.bot.get_game(ctx.channel.id)
+        if game is None:
+            print(f"No game in channel {ctx.channel}")
+        else:
+            print()
+            game.print_summary()
+
     @commands.command(name="load", help=LOAD_HELP)
     async def load_extension(self, ctx, extension_name):
         '''

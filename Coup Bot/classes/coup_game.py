@@ -12,6 +12,8 @@ import random
 
 # my code
 from classes.player import Player
+from classes.card_swap import CardSwap
+from helpers.display_utils import ordered_list
 
 class CoupGame:
     '''
@@ -33,8 +35,10 @@ class CoupGame:
             - Play the game
     '''
 
-    MIN_PLAYERS_DEFAULT = 2
+    MIN_PLAYERS_DEFAULT = 2   # also acts as a hard min
     MAX_PLAYERS_DEFAULT = 6
+    HARD_MAX_PLAYERS = 12
+
     START_COINS_DEFAULT = 2
     START_INFLUENCES_DEFAULT = 2
     CARD_TYPES = ('contessa', 'captain', 'ambassador', 'assassin', 'duke')
@@ -75,12 +79,35 @@ class CoupGame:
         self._dead_pile = {}       # maps card type to count
 
         # Information about the turn rotation
-        self._order = []           # game rotation order
+        self._order = []           # game rotation order as list of user IDs
         self._turn = 0             # index of player whose turn it is
 
         # Turn stage: 0 (action), 1 (challenge), 2 (response), 3 (challenge)
         # Creates variables: _stage, _action, _challenge1, _response, _challenge2, _pending
         self.clean_turn_vars()
+
+    def __repr__(self):
+        '''
+        String representing the game settings
+        '''
+        attr_names = ('_master', '_min_players', '_max_players', '_start_coins', '_start_influences')
+        attrs = ", ".join([f"{attr.lstrip('_')}={getattr(self, attr)}" for attr in attr_names])
+        return f"{self.__class__.__name__}({attrs})"
+
+    def __str__(self):
+        '''
+        String representing the current game state
+        '''
+        return "\n".join((
+            f"Active: {self._active}",
+            f"Player count: {self.player_count()}",
+            f"Stage: {self._stage}",
+            f"Can complete: {self.turn_can_complete()}",
+            f"Last event: {self.last_event()}",
+            f"Soft pending: {self.soft_pending}",
+            f"Hard pending: {self.hard_pending}",
+            f"Pending: {self.pending}",
+        ))
 
     @property
     def soft_pending(self):
@@ -164,7 +191,8 @@ class CoupGame:
         self._challenge1 = new_challenge
         if self._action.wins_challenge():
             # player who did Action would win challenge
-            if new_challenge.response_by.get_id() == self._action.done_to.get_id():
+            if self._action.done_to is not None and \
+                    new_challenge.response_by.get_id() == self._action.done_to.get_id():
                 # challenge won against responding player -- turn over
                 self._stage = self.COMPLETE_STAGE
             else:
@@ -236,15 +264,12 @@ class CoupGame:
 
         Up to the user to set whose turn it is with set_turn(player_id)
         '''
-        # Set game to `active` state
-        self._active = True
-
-        # Randomize the turn order
-        self.randomize_order()
-
         # Fill the card pile and shuffle it
         self._fill_card_pile()
         self.shuffle()
+
+        # Set game to `active` state
+        self._active = True
 
         # Initialize all the players
         for user_id, user in self._signup_ids.items():
@@ -255,6 +280,9 @@ class CoupGame:
                 player.set_influence(i, self.draw_card())
             self._players[user_id] = player
             self._order.append(user_id)
+
+        # Randomize the turn order
+        self.randomize_order()
 
 
     ########################## GAME STATE METHODS #####################
@@ -285,6 +313,12 @@ class CoupGame:
             return len(self._players)
         else:
             return len(self._signup_ids)
+
+    def influences_per_player(self):
+        '''
+        Gets the number of influence cards each player starts with
+        '''
+        return self._start_influences
 
     def get_master(self):
         '''
@@ -368,8 +402,10 @@ class CoupGame:
 
     def remove_player(self, user_id):
         '''
-        Removes a player from the game
+        Removes a player from the game by deleting them from the dictionary
+        of players and fixing the turn order.
         user_id: int, representing the ID of the player to remove
+        Return: True if it was that player's turn at the time, and False otherwise
         '''
         if user_id in self._players.keys():
             del self._players[user_id]
@@ -378,8 +414,11 @@ class CoupGame:
             i = self._order.index(user_id)
             self._order.pop(i)
             if i == self._turn:
-                # need to advance turn
+                # Turn was that of current player
+                self._turn -= 1  # subtract so next_turn() increments it to the correct player
                 self.next_turn()
+                return True      # let caller know it was that player's turn
+        return False             # let caller know it was not that player's turn
 
     def get_stage(self):
         '''
@@ -419,6 +458,9 @@ class CoupGame:
         self._challenge1 = None
         self._response = None
         self._challenge2 = None
+
+        # Keep track of any deaths this turn
+        self._deaths = []    # list of Die responses
 
         # whether the game is pending an action / response / other to continue
         # to the next turn
@@ -506,47 +548,103 @@ class CoupGame:
 
         # Summarize the actions, challenges, and responses of the game
         if self._action is not None:
-            turn_embed.add_field(name="Action", value=self._action.attempt_message(), inline=False)
+            turn_embed.add_field(name="Action", value=self._action.complete_message(), inline=False)
         if self._challenge1 is not None:
-            turn_embed.add_field(name="Challenge 1", value=self._challenge1.attempt_message(), inline=False)
+            turn_embed.add_field(name="Challenge 1", value=self._challenge1.complete_message(), inline=False)
         if self._response is not None:
-            turn_embed.add_field(name="Response", value=self._response.attempt_message(), inline=False)
+            turn_embed.add_field(name="Response", value=self._response.complete_message(), inline=False)
         if self._challenge2 is not None:
-            turn_embed.add_field(name="Challenge 2", value=self._challenge2.attempt_message(), inline=False)
+            turn_embed.add_field(name="Challenge 2", value=self._challenge2.complete_message(), inline=False)
+
+        if len(self._deaths) > 0:
+            turn_embed.add_field(name="Deaths", value="\n".join(d.complete_message() for d in self._deaths))
 
         turn_embed.set_footer(text="Turn completed at")
         return turn_embed
+
+    def print_summary(self):
+        '''
+        Prints out the game summary
+        '''
+        print(repr(self))
+        print("Action:", self._action)
+        print("Challenge 1:", self._challenge1)
+        print("Response:", self._response)
+        print("Challenge 2:", self._challenge2)
+        print("-"*45)
+        print("CURRENT TURN:", self.get_turn())
+        print("DRAW PILE:", self._draw_pile)
+        print("-"*45)
+        for player in self._players.values():
+            print(repr(player), ":")
+            for i in range(self._start_influences):
+                print("    -", player[i])
+
+    def add_card(self, card):
+        '''
+        Adds a card to the top of the pile
+        '''
+        self._draw_pile.append(card)
 
     def draw_card(self):
         '''
         Draws a card from the pile (removing it)
         '''
         # The last card in the list is the "top" of the pile
-        return self._draw_pile.pop()
+        card = self._draw_pile.pop()
+        return card
 
     def swap_cards(self, player, cards_to_swap):
         '''
         Swaps the player's cards with random cards from the draw pile
         player: Player to swap cards with
         cards_to_swap: dict of {influence_type: num to swap}
+        Return: CardSwap object representing the cards that were swapped in/out
         '''
+        # Check if the player has all the required cards
+        has_all = True
+        num_to_swap = 0
+        for influence_type, num in cards_to_swap.items():
+            num_to_swap += num
+            has_all &= player.has(influence_type, num)
+
         # Add the right cards back into the draw pile
         influences = player.get_influences()
         indices_to_swap = []
-        for i in range(len(influences)):
-            influence = influences[i]
-            if influence is not None:
-                num_to_swap = cards_to_swap.get(influence.type, 0)
-                if num_to_swap > 0:
+        swapped_in = []
+
+        if has_all:
+            # player has all the cards for the swap
+            for i in range(len(influences)):
+                influence = influences[i]
+                if influence is not None and influence.alive:
+                    num_to_swap = cards_to_swap.get(influence.type, 0)
+                    if num_to_swap > 0:
+                        # Add the card to the draw pile
+                        self._draw_pile.append(influence.type)
+                        swapped_in.append(influence)
+                        indices_to_swap.append(i)
+                        cards_to_swap[influence.type] -= 1
+        else:
+            # just try to swap the right number
+            for i in range(num_to_swap):
+                influence = influences[i]
+                if influence is not None and influence.alive:
                     # Add the card to the draw pile
                     self._draw_pile.append(influence.type)
+                    swapped_in.append(influence)
                     indices_to_swap.append(i)
-                    cards_to_swap[influence.type] -= 1
+                    num_to_swap -= 1
 
         # Shuffle the cards and draw to replace
         self.shuffle()
+        swapped_for = []
         for index in indices_to_swap:
-            player.set_influence(index, self.draw_card().type)
+            drew = self.draw_card()
+            swapped_for.append(drew)
+            player.set_influence(index, drew)
+
+        return CardSwap(swapped_in, swapped_for)
 
     def get_pending_players(self):
         '''
@@ -566,12 +664,19 @@ class CoupGame:
         and for what reason
         '''
         pending_embed = Embed(
-            title = "Pending Players",
+            title = "Pending Actions",
             description = "Awaiting actions from the following players:",
             color = Color.orange(),
         )
+        if self.action is None:
+            # Waiting for player to make their Action
+            player = self.get_turn()
+            pending_embed.add_field(name="Waiting for Action ...", value=player.get_mention(), inline=False)
+        elif self.response is None and self.action.done_to is not None:
+            # Waiting for affected player to respond
+            pending_embed.add_field(name="Waiting for Response ...", value=self.action.done_to.get_mention(), inline=False)
         for player in self.get_pending_players():
-            pending_embed.add_field(name="Player", value=player.get_user().mention)
+            pending_embed.add_field(name="Player", value=player.get_mention())
             pending_embed.add_field(name="Must Kill", value=player.must_kill)
             pending_embed.add_field(name="Must Swap Cards", value=player.must_swap)
         return pending_embed
@@ -590,10 +695,10 @@ class CoupGame:
         setup_embed.add_field(name="Game Master", value=self._signup_ids[self._master].mention)
         if self.is_active():
             setup_embed.color = Color.green()
-            mentions = '\n'.join([player.get_user().mention for player in self._players.values()])
+            mentions = ordered_list([player.get_mention() for player in self._players.values()])
         else:
             setup_embed.color = Color.orange()
-            mentions = '\n'.join([user.mention for user in self._signup_ids.values()])
+            mentions = ordered_list([user.mention for user in self._signup_ids.values()])
         setup_embed.add_field(name="Current Players", value=mentions)
 
         # Gameplay settings
@@ -608,6 +713,28 @@ class CoupGame:
 
         setup_embed.set_footer(text="Created at")
         return setup_embed
+
+    @staticmethod
+    def rules_embed(prefix=None):
+        '''
+        Creates the embed representing the game rules
+        prefix: str, representing the bot prefix
+        '''
+        rules_embed = Embed(
+            title = "Coup Rules",
+            description = "At the start of their turn, the player can perform one action. Other players may block, challenge, or let the action pass. A block to a response may also be challenged.\nIf a player has over 10 coins, they are required to coup this turn.",
+            color = Color.blue(),
+        )
+        rules_embed.add_field(name="Contessa", value="`Block assassination`")
+        rules_embed.add_field(name="Double Contessa", value="`Block coup`")
+        rules_embed.add_field(name="Assassin", value="`Assassinate (-3 coins)`")
+        rules_embed.add_field(name="Captain", value="`Steal (+2 coins)`\n`Block steal`")
+        rules_embed.add_field(name="Ambassador", value="`Exchange cards`\n`Block steal`")
+        rules_embed.add_field(name="Duke", value="`Tax (+3 coins)`\n`Block foreign aid`")
+        rules_embed.add_field(name="(General Ability)", value="`Income (+1 coin)`\n`Foreign aid (+2 coins)`\n`Coup (-7 coins)`\n`Challenge action`")
+        if prefix is not None:
+            rules_embed.set_footer(text=f"See {prefix}guide for gameplay guide")
+        return rules_embed
 
     def summary_embed(self):
         '''
@@ -644,7 +771,28 @@ class CoupGame:
         summary_embed.add_field(name="Lives ❤", value="\n".join(life_counts))
         summary_embed.add_field(name="Coins 🪙", value="\n".join(coin_counts))
 
+        if len(self._deaths) > 0:
+            summary_embed.add_field(name="Deaths", value="\n".join(d.complete_message() for d in self._deaths))
+
         return summary_embed
+
+    def add_death(self, die_response):
+        '''
+        Adds a death that occurred during the turn. If it makes it so the
+        game will no longer be hard pending, automatically sets `pending`
+        to false and updates the game stage.
+        '''
+        if self.action is None:
+            # player used Die as their response
+            self.response = die_response
+        else:
+            # player was forced to use Die
+            self._deaths.append(die_response)
+
+        # Check pending status
+        if not self.hard_pending:
+            self._stage = self.COMPLETE_STAGE
+            self.pending = False
 
     def dead_embed(self):
         '''
@@ -657,7 +805,7 @@ class CoupGame:
         description = "```"
         for card_type, dead_count in self._dead_pile:
             description += f"{card_type.capitalize()} (x{dead_count})"
-        dead_pile_embed.description = description + "```"
+        dead_pile_embed.description = description + " ```"
         return dead_pile_embed
 
     @classmethod
@@ -758,6 +906,9 @@ class CoupGame:
         elif max_players < self._min_players:
             # max players must be >= min players
             self._max_players = self._min_players
+        elif max_players > self.HARD_MAX_PLAYERS:
+            # max players must be below hard max
+            self._max_players = self.HARD_MAX_PLAYERS
         else:
             self._max_players = max_players
 
@@ -815,7 +966,7 @@ class CoupGame:
                 count_per_card = int(num_needed / num_types)
             else:
                 # get to the next multiple of num_types
-                count_per_card = int((num_needed + num_types - mod)/ num_types)
+                count_per_card = int((num_needed + num_types - mod) / num_types)
 
         # Add all the cards to the pile (NOT SHUFFLED)
         for card_type in self.CARD_TYPES:

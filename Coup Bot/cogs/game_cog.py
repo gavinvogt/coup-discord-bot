@@ -5,17 +5,18 @@ This program creates the Game cog for the Coup Bot
 '''
 
 # dependencies
-from discord import User
+from discord import User, Embed, Color
 from discord.ext import commands
+import asyncio
 
 # my code
 from cogs.base_cog import BaseCog
 from classes.coup_game import CoupGame
-from classes import actions
-from classes import responses
+from classes import actions, responses
 from helpers.command_checks import (channel_has_game, game_is_started, is_stage,
             game_not_started, is_player, is_turn,others_in_game, has_enough_coins,
-            under_ten_coins, is_game_master)
+            under_ten_coins, is_game_master, must_swap, must_kill, is_exchange,
+            exchange_time_up, not_swapped_yet)
 
 
 # Removing a player during the game
@@ -25,6 +26,8 @@ KICK_HELP = "Kick a player from the game"
 # Action commands
 STEAL_HELP = "Steal 2 coins from another player (CAPTAIN)"
 EXCHANGE_HELP = "Look at two cards in the pile to exchange (AMBASSADOR)"
+SWAP_HELP = "Perform the swap in an exchange"
+NOSWAP_HELP = "Skipp the swap in an exchange"
 ASSASSINATE_HELP = "Assassinate another player for 3 coins (ASSASSIN)"
 TAX_HELP = "Take tax for +3 coins (DUKE)"
 INCOME_HELP = "Take income for +1 coin (GENERAL)"
@@ -34,6 +37,7 @@ COUP_HELP = "Launch a coup on another player for 7 coins (GENERAL)"
 # Response commands
 PASS_HELP = "Pass on responding to another player's action"
 CHALLENGE_HELP = "Challenges a player's claim"
+DIE_HELP = "Select card(s) to die"
 BLOCK_HELP = """Blocks another player's action
 Valid influence types:
   - contessa
@@ -51,16 +55,11 @@ class GameCog(BaseCog, name="game"):
     def __init__(self, bot):
         super().__init__(bot)
 
-    """
     async def cog_before_invoke(self, ctx):
-        '''
-        Rotates the turn before the command is run, if necessary
-        '''
-        # Make sure the game properly rotates the turn
         game = self.bot.get_game(ctx.channel.id)
-        player = game.get_player(ctx.author.id)
-        await self._check_turn_rotation(ctx.channel, game, player)
-    """
+        if game is not None:
+            print("\nBefore:", "-"*45, game, sep='\n')
+            print("-"*45)
 
     async def cog_after_invoke(self, ctx):
         '''
@@ -69,8 +68,17 @@ class GameCog(BaseCog, name="game"):
         '''
         game = self.bot.get_game(ctx.channel.id)
         if game is not None:
-            await self._check_turn_over(ctx.channel, game)
+            print("\nAfter:", "-"*45, game, sep='\n')
+
+            # Check if game / turn is over
+            await self._check_turn_over(ctx.channel, game, advance_if_possible=False)
             await self._check_game_over(ctx.channel, game)
+
+            le = game.last_event()
+            if le is not None:
+                print("\nLast event:", le)
+                print("Wins challenge:", le.wins_challenge())
+            print("-"*45)
 
 
     ################################### ACTION COMMANDS ################################
@@ -91,6 +99,7 @@ class GameCog(BaseCog, name="game"):
         '''
         # Get the game and other player
         game = self.bot.get_game(ctx.channel.id)
+        player = game.get_player(ctx.author.id)
         other_player = game.get_player(user.id)
 
         # Create and perform the Action
@@ -105,10 +114,10 @@ class GameCog(BaseCog, name="game"):
         Before a steal, it checks that the player has at least 1 coin
         and rotates the turn if necessary
         '''
-        user = ctx.message.mentions[0]
         game = self.bot.get_game(ctx.channel.id)
-        player = game.get_player(user.id)
-        if other_player.get_coins() < 1:
+        user = ctx.message.mentions[0]
+        stealing_from = game.get_player(user.id)
+        if stealing_from.get_coins() < 1:
             # user doesn't have enough coins to steal from
             await ctx.send(f"{user.mention} is too broke to steal from")
             raise commands.CheckFailure(f"{user.mention} is too broke to steal from")
@@ -131,9 +140,119 @@ class GameCog(BaseCog, name="game"):
         player = game.get_player(ctx.author.id)
 
         # Create and perform the Action
-        game.action = actions.Exchange(player)
-        game.action.perform_action()
-        await ctx.send(game.action.attempt_message())
+        exchange = actions.Exchange(player)
+        game.action = exchange
+        exchange.perform_action()
+        await ctx.send(exchange.attempt_message())
+
+        # Wait for someone to challenge before continuing
+        wait_time = actions.Exchange.get_wait_time()
+        wait_embed = Embed(
+            title = "Waiting for challenges ...",
+            description = f"{wait_time} seconds remaining",
+            color = Color.orange(),
+        )
+        msg = await ctx.send(embed=wait_embed)
+        exchange.set_time_up(False)
+        await asyncio.sleep(1)
+        for i in range(wait_time - 1, 0, -1):
+            if game.challenge1 is not None:
+                # challenge occurred; continue and see if won
+                exchange.set_time_up(True)
+                break
+            wait_embed.description = f"{i} seconds remaining"
+            await msg.edit(embed=wait_embed)
+            await asyncio.sleep(1)
+
+        # Wait is over
+        exchange.set_time_up(True)
+        if game.challenge1 is not None and not exchange.wins_challenge():
+            # Exchange failed
+            wait_embed.description = "CANCELLED"
+            wait_embed.color = Color.red()
+            await msg.edit(embed=wait_embed)
+            await ctx.send("Exchange cancelled")
+        else:
+            # Carry out the exchange
+            wait_embed.description = "SUCCESS"
+            wait_embed.color = Color.green()
+            await msg.edit(embed=wait_embed)
+            await ctx.send(f"Showing {exchange.done_by.get_mention()} top 2 cards")
+
+            # Draw the top two cards
+            exchange.set_card(0, game.draw_card())
+            exchange.set_card(1, game.draw_card())
+            card_embed = Embed(
+                title = "Top Two Cards",
+                description = "Use `c!hand` if you need to see your hand.\nSelect a card to swap with:",
+                color = Color.green(),
+            )
+            card_embed.set_footer(text="c!swap <yourCardIndex> <otherCardIndex>\nc!noswap")
+            card_embed.add_field(name="Card 1", value=exchange.get_card(0).capitalize())
+            card_embed.add_field(name="Card 2", value=exchange.get_card(1).capitalize())
+
+            await exchange.done_by.get_user().send(embed=card_embed)
+
+    @commands.command(name="swap", help=SWAP_HELP)
+    @exchange_time_up(True)
+    @not_swapped_yet()
+    @is_exchange()
+    @must_swap()
+    @is_player()
+    @game_is_started()
+    @channel_has_game()
+    @commands.guild_only()
+    async def perform_card_swap(self, ctx, your_card: int, swap_with: int):
+        '''
+        Lets the user perform a card swap to finish the Exchange
+        your_card: index of player's card to swap
+        swap_with: index of exchange card to swap with
+        '''
+        game = self.bot.get_game(ctx.channel.id)
+        player = game.get_player(ctx.author.id)
+
+        # Verify that the indices are valid
+        your_card -= 1
+        swap_with -= 1
+        if not (0 <= your_card < game.influences_per_player()):
+            await ctx.send(f"Invalid index: `your_card={your_card + 1}`")
+            return
+        if not player[your_card].alive:
+            await ctx.send(f"Your card `{your_card + 1}` is not alive")
+            return
+        if not (0 <= swap_with <= 1):
+            await ctx.send(f"Invalid index: `swap_with={swap_with + 1}`")
+            return
+
+        # Perform the swap
+        await player.get_user().send(f"Swapped your `{player[your_card].type.capitalize()}`, for `{game.action.get_card(swap_with).capitalize()}`")
+        game.action.perform_swap(your_card, swap_with, game)
+        player.must_swap = False
+        await ctx.send("Performed swap and shuffled draw pile")
+
+        await self._check_turn_over(ctx.channel, game, advance_if_possible=True)
+
+    @commands.command(name="noswap", help=NOSWAP_HELP)
+    @exchange_time_up(True)
+    @not_swapped_yet()
+    @is_exchange()
+    @must_swap()
+    @is_player()
+    @game_is_started()
+    @channel_has_game()
+    @commands.guild_only()
+    async def no_card_swap(self, ctx):
+        '''
+        Lets the user decide not to swap cards
+        '''
+        game = self.bot.get_game(ctx.channel.id)
+        player = game.get_player(ctx.author.id)
+
+        game.action.perform_swap(None, 0, game)
+        player.must_swap = False
+        await ctx.send("Skipped swap and shuffled draw pile")
+
+        await self._check_turn_over(ctx.channel, game, advance_if_possible=True)
 
     @commands.command(name="assassinate", help=ASSASSINATE_HELP)
     @others_in_game(1, "assassinate")
@@ -158,7 +277,7 @@ class GameCog(BaseCog, name="game"):
         game.action = actions.Assassinate(player, other_player)
         game.action.perform_action()
         await ctx.send(game.action.attempt_message())
-        await user.send(embed=game.action.available_responses(channel.mention))
+        await user.send(embed=game.action.available_responses(ctx.channel.mention))
 
     @commands.command(name="tax", help=TAX_HELP)
     @under_ten_coins()
@@ -219,7 +338,7 @@ class GameCog(BaseCog, name="game"):
         game.action = actions.ForeignAid(player)
         game.action.perform_action()
         await ctx.send(game.action.attempt_message())
-        await ctx.send(embed=game.action.available_responses(channel.mention))
+        await ctx.send(embed=game.action.available_responses(ctx.channel.mention))
 
     @commands.command(name="coup", help=COUP_HELP)
     @others_in_game(1, "coup")
@@ -243,7 +362,7 @@ class GameCog(BaseCog, name="game"):
         game.action = actions.LaunchCoup(player, other_player)
         game.action.perform_action()
         await ctx.send(game.action.attempt_message())
-        await user.send(embed=game.action.available_responses(channel.mention))
+        await user.send(embed=game.action.available_responses(ctx.channel.mention))
 
     # CHECK BEFORE EACH ACTION IF THE TURN / GAME IS OVER
     # (steal not included because it has a more specific check above)
@@ -297,12 +416,12 @@ class GameCog(BaseCog, name="game"):
         # Check if player is allowed to block player_to_block
         if not game.action.is_blockable():
             # action itself cannot be blocked
-            await ctx.send(f"{game.action.done_by.get_user().mention}'s action is not blockable")
+            await ctx.send(f"{game.action.done_by.get_mention()}'s action is not blockable")
             return
         elif not isinstance(game.action, actions.ForeignAid) and \
                 game.action.done_to is not player:
             # not foreign aid, so block must be by `done_to` player
-            await ctx.send(f"Only {game.action.done_to.get_user().mention} is allowed to block")
+            await ctx.send(f"Only {game.action.done_to.get_mention()} is allowed to block")
             return
         elif player is player_to_block:
             # tried to block self
@@ -311,25 +430,25 @@ class GameCog(BaseCog, name="game"):
 
         # Auto determine the influence if necessary
         influence = influence.lower()
-        if inluence == "auto-determine":
+        if influence == "auto-determine":
             # automatically determine what influence they are using to block
-            if isinstance(ACTION, actions.Assassinate):
+            if isinstance(game.action, actions.Assassinate):
                 # blocking assassination with Contessa
                 influence = "contessa"
-            elif isinstance(ACTION, actions.ForeignAid):
+            elif isinstance(game.action, actions.ForeignAid):
                 # blocking foreign aid with Duke
                 influence = "duke"
-            elif isinstance(ACTION, actions.ForeignAid):
+            elif isinstance(game.action, actions.ForeignAid):
                 # blocking coup with Double Contessa
                 influence = "doublecontessa"
-            elif isinstance(ACTION, actions.Steal):
+            elif isinstance(game.action, actions.Steal):
                 # blocking a steal with either Captain or Ambassador, but didn't specify
                 await ctx.send("Please specify whether you are blocking with Captain or Ambassador")
                 return
 
         # Make sure the block is possible with the given card
         if not game.action.can_block_with(influence):
-            await ctx.send(f"{influence.captalize()} is unable to block {player_to_block.get_user().mention}'s action")
+            await ctx.send(f"`{influence.capitalize()}` is unable to block {player_to_block.get_mention()}'s action")
             return
 
         # Convert the influence type into the correct Reponse class
@@ -351,6 +470,9 @@ class GameCog(BaseCog, name="game"):
   - duke
   - doublecontessa```""")
             return
+
+        # Perform the block by undoing the action
+        game.action.undo_action()
 
         # set the game's Response stage to the newly created response
         game.response = response
@@ -386,7 +508,7 @@ class GameCog(BaseCog, name="game"):
         game_stage = game.get_stage()
 
         # done_to user responding
-        if ctx.author.id == action.done_to.get_id():
+        if action.done_to is not None and ctx.author.id == action.done_to.get_id():
             # must be `challenge1` or `response` stage
             if game_stage == CoupGame.CHALLENGE1_STAGE or game_stage == CoupGame.RESPONSE_STAGE:
                 # Allows the Action to complete unchecked (turn ends)
@@ -411,7 +533,11 @@ class GameCog(BaseCog, name="game"):
             await ctx.send("You are unable to pass")
             return
 
+        # Pass means the game is no longer pending
+        game.pending = False
+
     @commands.command(name="challenge", help=CHALLENGE_HELP)
+    @exchange_time_up(False)
     @commands.check_any(is_stage(CoupGame.CHALLENGE1_STAGE), is_stage(CoupGame.CHALLENGE2_STAGE))
     @game_is_started()
     @is_player()
@@ -435,20 +561,19 @@ class GameCog(BaseCog, name="game"):
                     await ctx.send("You can't challenge yourself")
                     return
 
-                # Create and carry out the challenge
+                # Create and carry out the challenge (automatically undoes the action)
                 challenge = responses.Challenge(player, player_to_challenge)
+                game.action.undo_action()
                 await ctx.send(challenge.attempt_message())
-                if ctx.author.id == game.action.done_to.get_id():
+                if game.action.done_to is not None and ctx.author.id == game.action.done_to.get_id():
                     # user is responding with Challenge -> store as response
                     game.response = challenge
                 else:
                     # general user challenging -> store as challenge1
                     game.challenge1 = challenge
                 await self.handle_challenge(ctx, game, game.action, challenge)
-
-                # TODO : separate into `setup` and `game` cogs
             else:
-                await ctx.send(f"Can't challenge {game.action.done_by.get_user().mention}'s action")
+                await ctx.send(f"Can't challenge {game.action.done_by.get_mention()}'s action")
                 return
 
         elif game_stage == CoupGame.CHALLENGE2_STAGE:
@@ -465,7 +590,7 @@ class GameCog(BaseCog, name="game"):
                     await ctx.send(game.challenge2.attempt_message())
                     await self.handle_challenge(ctx, game, game.response, game.challenge2)
             else:
-                await ctx.send(f"Can't challenge {game.response.response_by.get_user().mention}'s action")
+                await ctx.send(f"Can't challenge {game.response.response_by.get_mention()}'s action")
                 return
 
     async def handle_challenge(self, ctx, game, action, challenge):
@@ -480,19 +605,31 @@ class GameCog(BaseCog, name="game"):
         challenger = challenge.response_by
         if action.wins_challenge():
             # Action was valid (challenged player wins)
-            await ctx.send(f"{challenged.get_user().mention} won the challenge!")
+            await ctx.send(f"{challenged.get_mention()} won the challenge!")
+            if isinstance(action, actions.Action):
+                # person who made Action won; redo the action
+                action.perform_action()
+            # if isinstance(action, Response): don't do anything because action was already undone
             challenger.must_kill += 1
 
             # Automatically swap challenged_player's revealed card
-            game.swap_cards(challenged, action.REQUIRED_CARDS)
-            await ctx.send(f"Swapped {challenged.get_user()}'s revealed cards for new ones")
+            await self._handle_swap(ctx.channel, game, challenged, action, revealed=True)
+            action.swapped = True
         else:
             # Action was a bluff (challenger wins)
-            await ctx.send(f"{challenger.get_user().mention} won the challenge!")
-            action.undo_action()
+            await ctx.send(f"{challenger.get_mention()} won the challenge!")
+            if isinstance(action, actions.Action):
+                pass
+                # challenger won against person who made Action; undo the action
+                # ACTION HAS ALREADY BEEN UNDONE
+            if isinstance(action, responses.Response):
+                # challenger won against person who made Response; redo action that had been blocked
+                game.action.perform_action()
+
             challenged.must_kill += 1
 
-    @commands.command(name="die")
+    @commands.command(name="die", help=DIE_HELP)
+    @must_kill()
     @is_player()
     @game_is_started()
     @channel_has_game()
@@ -506,35 +643,32 @@ class GameCog(BaseCog, name="game"):
         game = self.bot.get_game(ctx.channel.id)
         player = game.get_player(ctx.author.id)
 
-        # Check if the player needs to kill a card
-        if not player.must_kill > 0:
-            # player does not have to kill a card
-            await ctx.send("You do not have to kill a card")
-            return
-
         # Figure out which cards to kill
         try:
             card_indexes = {int(num) - 1 for num in card_nums}
             if len(card_indexes) != player.must_kill:
                 # they aren't killing the correct number
                 await ctx.send(f"Need to kill `{player.must_kill}` cards, try again")
+                return
             for i in card_indexes:
                 if not player[i].alive:
                     # tried to kill a card that wasn't alive
                     await ctx.send(f"Card `{i + 1}` is not alive, try again")
+                    return
         except:
             await ctx.send(f"Card `{i + 1}` is not valid, try again")
             return
 
-        # TODO: it doesn't know if killing a card is a Response, such as to an assassination
-        # or a required action
+        # Create and perform the action
         response = responses.Die(player, *card_indexes)
-
-        # TODO: add to game.[turn_stage]
-
-        # TODO: do the action
         response.perform_action()
+        game.add_death(response)
         await ctx.send(response.complete_message())
+
+        # Check if the player is eliminated
+        if player.is_eliminated():
+            await self.bot.process_player_remove(ctx.channel, game, player)
+            await ctx.send(f"{ctx.author.mention} was eliminated")
 
 
     ############################## REMOVING PLAYERS FROM GAME ##############################
@@ -551,8 +685,13 @@ class GameCog(BaseCog, name="game"):
         '''
         # Possible to kick player if checks are passed
         game = self.bot.get_game(ctx.channel.id)
-        game.remove_player(user.id)
-        self.bot.set_user_status(user.id, False)
+        if game.is_active():
+            player = game.get_player(user.id)
+            await self.bot.process_player_remove(ctx.channel, game, player)
+        else:
+            # game hasn't started yet
+            game.unsign_up_player(user.id)
+            self.bot.set_user_status(user.id, False)
         await ctx.send(f"Removed {user.mention} from game")
 
     @commands.command(name="forfeit", help=FORFEIT_HELP)
@@ -572,14 +711,9 @@ class GameCog(BaseCog, name="game"):
             self.bot.remove_game(channel_id)
             await ctx.send("No players remain - game cancelled")
         else:
-            game.remove_player(ctx.author.id)
-            self.bot.set_user_status(user.id, False)
+            player = game.get_player(ctx.author.id)
             await ctx.send(ctx.author.mention + " left the game")
-            await self.bot.transfer_master(game, ctx.author.id)
-
-        # TODO
-        # Action and Response classes might have text they return
-        # to say stuff for if challenge won/lost or if action completed
+            await self.bot.process_player_remove(ctx.channel, game, player)
 
 
     ################################# HELPER METHODS ###############################
@@ -638,31 +772,43 @@ class GameCog(BaseCog, name="game"):
         '''
         if game.get_next_turn().get_id() == player.get_id():
             # player is from the next turn
-            return self._check_turn_over(channel, game, send_prompt=False)
+            return await self._check_turn_over(channel, game, send_prompt=False)
         # was not their turn
         return False
 
-    async def _check_turn_over(self, channel, game, *, send_prompt=True):
+    async def _check_turn_over(self, channel, game, *, advance_if_possible=True, send_prompt=True):
         '''
         Checks if the current turn is over for the given game. If the turn
         is over, it automatically wraps up the turn and advances it
         channel: discord.Channel where game is being played
         game: CoupGame representing the game
+        advance_if_possible: bool, representing whether to advance the turn on the
+        sole basis that it is "possible"
         send_prompt: bool, representing whether to send prompts after
         rotating the turn (defaults to False)
         Return: True if the turn was completed, and False otherwise
         '''
-        if game.hard_pending:
+        if game.soft_pending and not advance_if_possible:
+            # game is soft pending and don't need to advance if necessary
+            return
+        elif game.is_over():
+            # Send the last turn summary
+            await channel.send(embed=game.turn_summary())
+            return
+        elif game.hard_pending:
             # Send which specific players have pending moves
             await channel.send(embed=game.pending_players_embed())
             return False
         elif game.turn_can_complete():
+            # Swap cards for any supers used
+            await self._check_super_swaps(channel, game)
+
             # Send turn summary and advance to next turn
             await channel.send(embed=game.turn_summary())
             game.next_turn()
             if send_prompt:
                 # Prompt user for their action
-                await channel.send(f"It is now {game.get_turn().get_user().mention}'s turn")
+                await channel.send(f"It is now {game.get_turn().get_mention()}'s turn")
                 await self.bot.prompt_action(channel)
             return True
 
@@ -678,12 +824,53 @@ class GameCog(BaseCog, name="game"):
         if game.is_over():
             # game has a winner
             winner = game.get_winner()
-            await ctx.send(f"{winner.get_user().mention} was victorious!")
-            self.bot.remove_game(channel_id)
+            await channel.send(f"Game over - {winner.get_mention()} was victorious 🎉")
+            self.bot.remove_game(channel.id)
             return True
         else:
             return False
 
+    async def _check_super_swaps(self, channel, game):
+        '''
+        Checks if any automatic swaps need to happen. Only happens for
+        cards that are "supers" (like Double Contessa)
+        channel: Channel to send information to
+        game: CoupGame to check swaps for
+        '''
+        # Check for swapping in the Action
+        action = game.action
+        if action is not None and action.is_super() and not action.swapped:
+            # Action was a super and has not been swapped yet
+            await self._handle_swap(channel, game, action.done_by, action, revealed=False)
+
+        # Check for swapping in the Response
+        response = game.response
+        if response is not None and response.is_super() and not response.swapped:
+            # Response was a super and has not been swapped yet
+            await self._handle_swap(channel, game, response.response_by, response, revealed=False)
+
+    async def _handle_swap(self, channel, game, player, action, *, revealed):
+        '''
+        Handles a card swap for the player in the given game, for the given action. The
+        action informs the method which cards need to be swapped
+        channel: Channel to send information to
+        game: CoupGame for the game being played
+        player: Player getting their cards swapped
+        action: Action or Response that needs to be swapped for
+        revealed: bool, whether the cards were revealed
+        '''
+        swapped_cards = game.swap_cards(player, action.REQUIRED_CARDS)  # CardSwap object
+        if revealed:
+            card_text = swapped_cards.in_text()
+        else:
+            maybe_swapped = []
+            for influence_type, num in action.REQUIRED_CARDS:
+                for _ in range(num):
+                    maybe_swapped.append(influence_type.capitalize())
+            card_text = f"(maybe) `{'`, `'.join(maybe_swapped)}`"
+        await channel.send(f"Swapped {player.get_mention()}'s revealed {card_text} for new cards")
+        await player.get_user().send(swapped_cards.summary_text())
+        action.swapped = True
 
 
 def setup(bot):

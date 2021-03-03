@@ -23,6 +23,7 @@ class LaunchCoup(Action):
         player2: Player representing the player being couped
         '''
         super().__init__(player1, player2)
+        self._new_coins = player1.get_coins() - self.cost()
 
     @staticmethod
     def is_influence_power():
@@ -73,13 +74,23 @@ class LaunchCoup(Action):
         '''
         Performs an action to the player
         '''
-        TODO
+        self._done_by.set_coins(self._new_coins)
+        self._done_to.must_kill += 1
 
     def undo_action(self):
         '''
         Undoes the action to the player(s)
         '''
-        TODO
+        # Player doesn't get coins back
+        self._done_to.must_kill -= 1
+
+    @staticmethod
+    def is_super():
+        '''
+        Checks if this Action is a super (such as Double Contessa), and
+        requires a card swap either way
+        '''
+        return False
 
     @classmethod
     def available_responses(cls, channel_mention):
@@ -102,4 +113,3 @@ class LaunchCoup(Action):
         the action is completed successfully
         '''
         return f"{self._done_by.get_user().mention} couped {self._done_to.get_user().mention}"
-

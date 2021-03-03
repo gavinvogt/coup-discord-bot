@@ -9,6 +9,7 @@ from discord.ext import commands
 
 # my code
 from classes.coup_game import CoupGame
+from classes import actions
 
 class CustomCheckFailure(commands.CheckFailure):
     '''
@@ -80,11 +81,6 @@ def is_turn():
     '''
     async def predicate(ctx):
         game = ctx.bot.get_game(ctx.channel.id)
-        print("\n---------------------")
-        print("Pending:", game.pending)
-        print("Stage:", game.get_stage())
-        print("Can complete:", game.turn_can_complete())
-        print("Last event:", game.last_event())
         if game.get_stage() == CoupGame.ACTION_STAGE:
             # must be the current player
             player = game.get_turn()
@@ -171,8 +167,82 @@ def under_ten_coins():
             raise CustomCheckFailure("Over 10 coins; must coup another player")
     return commands.check(predicate)
 
+def must_swap():
+    '''
+    Checks if the author needs to swap cards
+    '''
+    async def predicate(ctx):
+        # Check if the player needs to swap a card
+        game = ctx.bot.get_game(ctx.channel.id)
+        player = game.get_player(ctx.author.id)
+        if player.must_swap:
+            return True
+        else:
+            raise CustomCheckFailure("You do not have to swap a card")
+    return commands.check(predicate)
 
+def must_kill():
+    '''
+    Checks if the author needs to kill some of their cards
+    '''
+    async def predicate(ctx):
+        # Check if the player needs to kill a card
+        game = ctx.bot.get_game(ctx.channel.id)
+        player = game.get_player(ctx.author.id)
+        if player.must_kill > 0:
+            return True
+        else:
+            raise CustomCheckFailure("You do not have to kill a card")
+    return commands.check(predicate)
 
+def is_exchange():
+    '''
+    Makes sure that the action in the game is an Exchange, and the
+    player calling the command is the one who made it.
+    '''
+    async def predicate(ctx):
+        action = ctx.bot.get_game(ctx.channel.id).action
+        if action is None or not isinstance(action, actions.Exchange):
+            raise CustomCheckFailure("Action is not an `Exchange`")
+        elif action.done_by.get_id() != ctx.author.id:
+            raise CustomCheckFailure("You are not swapperman")
+        else:
+            return True
+    return commands.check(predicate)
+
+def exchange_time_up(time_up):
+    '''
+    Checks that if the action in the game is an Exchange, the time is up/not up.
+    Assumes that the action is an Exchange (otherwise automatically passes check)
+    time_up: bool, representing whether time_up should be True or False
+    '''
+    async def predicate(ctx):
+        action = ctx.bot.get_game(ctx.channel.id).action
+        if action is None or not isinstance(action, actions.Exchange):
+            # Not an Exchange - assume passes check
+            return True
+        elif action.time_is_up() == time_up:
+            # Values match
+            return True
+        else:
+            # Values for time_up do not match
+            if time_up:
+                raise CustomCheckFailure("Time to challenge `Exchange` is not up")
+            else:
+                raise CustomCheckFailure("Time to challenge `Exchange` is already up")
+    return commands.check(predicate)
+
+def not_swapped_yet():
+    '''
+    Checks that the Exchange swap has not occurred yet
+    '''
+    async def predicate(ctx):
+        action = ctx.bot.get_game(ctx.channel.id).action
+        if action.has_swapped():
+            raise CustomCheckFailure("Already swapped")
+        else:
+            return True
+    return commands.check(predicate)
 
 
 

@@ -88,6 +88,14 @@ class Steal(Action):
         self._done_by.add_coins(-self._num_coins_taking)
         self._done_to.add_coins(self._num_coins_taking)
 
+    @staticmethod
+    def is_super():
+        '''
+        Checks if this Action is a super (such as Double Contessa), and
+        requires a card swap either way
+        '''
+        return False
+
     @classmethod
     def available_responses(cls, channel_mention):
         '''
@@ -109,5 +117,4 @@ class Steal(Action):
         the action is completed successfully
         '''
         return f"{self._done_by.get_user().mention} yoinked {self._num_coins_taking} of {self._done_to.get_user().mention}'s coins"
-
 

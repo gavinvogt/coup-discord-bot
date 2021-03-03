@@ -5,7 +5,8 @@ This program creates the Coup Bot for Discord
 '''
 
 # dependencies
-from discord.ext import commands
+from discord.ext import commands, tasks
+from discord import Game
 import traceback
 
 # my code
@@ -13,11 +14,7 @@ from classes.coup_game import CoupGame
 from helpers.command_checks import CustomCheckFailure
 
 
-# JOIN LINK:
-# https://discordapp.com/oauth2/authorize?client_id=800190158481129502&scope=bot&permissions=67648
-
-
-BOT_VERSION = '0.0.0'      # [major release] . [major iteration] . [current update]
+BOT_VERSION = '0.0.0'
 initial_extensions = (
     'cogs.admin_cog',
     'cogs.setup_cog',
@@ -68,6 +65,25 @@ class CoupBot(commands.Bot):
         else:
             await super().on_command_error(ctx, exception)
 
+    async def on_connect(self):
+        '''
+        Start the update_status loop on connect
+        '''
+        self.update_status.start()
+
+    async def on_disconnect(self):
+        '''
+        Stops the update_status loop on disconnect
+        '''
+        self.update_status.cancel()
+
+    @tasks.loop(minutes=1)
+    async def update_status(self):
+        '''
+        Updates the game status every minute to what the number of games is
+        '''
+        await self.change_presence(activity=Game(name=f"{self.game_count()} games"))
+
     def get_game(self, channel_id):
         '''
         Gets the Coup game occuring in the given channel
@@ -83,6 +99,12 @@ class CoupBot(commands.Bot):
         game: CoupGame being played in that channel
         '''
         self._games[channel_id] = game
+
+    def game_count(self):
+        '''
+        Check the number of games being played
+        '''
+        return len(self._games)
 
     def remove_game(self, channel_id):
         '''
@@ -104,6 +126,31 @@ class CoupBot(commands.Bot):
         '''
         return (user_id in self._users)
 
+    async def process_player_remove(self, channel, game, player):
+        '''
+        Performs all the necessary actions for removing a player from the
+        given game, and internally processes the player's removal. Used for
+        `forfeit`, `kick`, `leave`, and if a player dies
+        channel: Channel where player is being removed from game
+        game: CoupGame player is being removed from
+        player: Player being removed from the game
+        '''
+        user_id = player.get_id()
+        if game.is_active():
+            # player removed from an active game
+            if game.remove_player(user_id):
+                # it was that player's turn at the time
+                await self.prompt_action(channel)
+        else:
+            # player left game with `leave` command
+            game.unsign_up_player(user_id)
+
+        # Clear user status
+        self.set_user_status(user_id, False)
+        if not game.is_over():
+            # Transfer game master if game is still going on
+            await self.transfer_master(channel, game, user_id)
+
     def set_user_status(self, user_id, in_game_status):
         '''
         Sets the status for a user
@@ -117,7 +164,7 @@ class CoupBot(commands.Bot):
             # user is not in a game
             self._users.discard(user_id)
 
-    async def transfer_master(self, game, user_id):
+    async def transfer_master(self, channel, game, user_id):
         '''
         Transfers the master of the game to a random player in the
         game if the user_id belongs to the master, meaning
@@ -127,7 +174,7 @@ class CoupBot(commands.Bot):
             # Player leaving game was game master; transfer master
             new_master = game.random_player()
             game.set_master(new_master.id)
-            await ctx.send(f"Transferred game master to {new_master.mention}")
+            await channel.send(f"Transferred game master to {new_master.mention}")
 
     async def prompt_action(self, channel):
         '''
@@ -135,13 +182,7 @@ class CoupBot(commands.Bot):
         channel: discord.Channel where game is being played
         '''
         game = self.get_game(channel.id)
-        if game is not None:
+        if game is not None and not game.is_over():
             # Ask the user for their action
             player = game.get_turn()
             await channel.send(f"Waiting for {player.get_mention()}'s action ...")
-            if not player.has_received_action_message():
-                # need to send the action message
-                await player.get_user().send(
-                    embed=CoupGame.possible_actions_embed(channel.mention))
-                player.sent_action_message()
-

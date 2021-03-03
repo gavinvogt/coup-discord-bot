@@ -111,10 +111,9 @@ class SetupCog(BaseCog, name="setup"):
             self.bot.remove_game(ctx.channel.id)
             await ctx.send("No players remain - game cancelled")
         else:
-            game.unsign_up_player(ctx.author.id)
-            self.bot.set_user_status(ctx.author.id, False)
+            player = game.get_player(ctx.author.id)
             await ctx.send(ctx.author.mention + " left the game")
-            await self.bot.transfer_master(game, ctx.author.id)
+            await self.bot.process_player_remove(ctx.channel, game, player)
 
 
     ######################### GAME MASTER ONLY COMMANDS ##########################
@@ -143,13 +142,16 @@ class SetupCog(BaseCog, name="setup"):
                 # Set the first player to be start_player
                 game.set_turn_to(start_player.id)
 
-            # Send the game summary and hands for reference
-            await ctx.send(embed=game.summary_embed())
+            # Send the rules summary and hands for reference
+            await ctx.send(embed=CoupGame.rules_embed(self.bot.command_prefix))
             for player in game.get_players():
                 await player.get_user().send(embed=player.get_embed(ctx))
 
             # Prompt first user for their action
             await self.bot.prompt_action(ctx.channel)
+
+        print()
+        game.print_summary()
 
     @commands.command(name="end", help=END_HELP, aliases=['cancel'])
     @is_game_master()

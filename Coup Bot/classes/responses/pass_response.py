@@ -22,7 +22,7 @@ class Pass(Response):
         player1: Player representing the player who is passing
         player2: Player representing the player who made the original action
         '''
-        super().__init__(self, player1, player2)
+        super().__init__(player1, player2)
 
     @staticmethod
     def is_influence_power():
@@ -36,6 +36,14 @@ class Pass(Response):
         Checks if the pass would win a challenge
         '''
         return True
+
+    @staticmethod
+    def is_super():
+        '''
+        Checks if this Response is a super (such as Double Contessa), and
+        requires a card swap either way
+        '''
+        return False
 
     def attempt_message(self):
         '''

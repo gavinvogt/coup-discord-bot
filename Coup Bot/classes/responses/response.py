@@ -15,12 +15,13 @@ class Response(metaclass=abc.ABCMeta):
     Public fields:
         - response_by
         - response_to
+        - swapped
 
     Methods that must be defined:
         - is_influence_power()
         - wins_challenge()
     '''
-    def __init__(self, player1, player2):
+    def __init__(self, player1, player2=None):
         '''
         Constructs a general Response
         player1: Player representing the player who is responding
@@ -28,12 +29,13 @@ class Response(metaclass=abc.ABCMeta):
         '''
         self._response_by = player1
         self._response_to = player2
+        self.swapped = False
 
     def __repr__(self):
         '''
         String representation of the Response
         '''
-        return f"{self.__class__.__name}({repr(self._response_by)}, {repr(self._response_to)})"
+        return f"{self.__class__.__name__}( {repr(self._response_by)}, {repr(self._response_to)} )"
 
     @property
     def response_by(self):
@@ -61,6 +63,15 @@ class Response(metaclass=abc.ABCMeta):
     def wins_challenge(self):
         '''
         Checks if the player would win a challenge
+        '''
+        raise NotImplementedError
+
+    @staticmethod
+    @abc.abstractmethod
+    def is_super():
+        '''
+        Checks if this Response is a super (such as Double Contessa), and
+        requires a card swap either way
         '''
         raise NotImplementedError
 

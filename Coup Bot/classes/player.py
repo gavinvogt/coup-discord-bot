@@ -23,6 +23,7 @@ class Player:
     Useful methods:
         - get_id()
         - get_user()
+        - get_mention()
         - get_coins()
         - add_coins(num_coins)
         - has(influence_type, count)
@@ -44,30 +45,23 @@ class Player:
         self._user = user
         self._coins = start_coins
         self._influences = [None for _ in range(num_influences)]
-        self._lives = num_influences
 
         # Required actions from the player before turn can complete
         self._must_kill = 0
         self._must_swap = False
 
-        # Not related to gameplay, but useful for game interface
-        self._received_action_msg = False
-
     def __repr__(self):
         '''
         String representation of the Player
         '''
-        return f"Player({self._user}, coins={self._coins}, lives={self._lives})"
+        return f"Player({self._user}, coins={self._coins}, lives={self.life_count()})"
 
     def __getitem__(self, index):
         '''
         Gets the influence card at the given index
         index: int, representing the index of the influence card
         '''
-        if 0 <= index < len(self._influences):
-            return self._influences[index]
-        else:
-            raise IndexError(f"The index {index} is out of range")
+        return self._influences[index]
 
     @property
     def must_kill(self):
@@ -127,6 +121,13 @@ class Player:
         '''
         return self._coins
 
+    def set_coins(self, num_coins):
+        '''
+        Sets the number of coins the player has
+        num_coins: int, representing the player's new coins
+        '''
+        self._coins = num_coins
+
     def add_coins(self, num_coins):
         '''
         Adds a certain number of coins to the player
@@ -142,7 +143,7 @@ class Player:
         count = 0
         influence_type = influence_type.lower()
         for influence in self._influences:
-            if influence is not None and influence_type.alive and influence.type == influence_type:
+            if influence is not None and influence.alive and influence.type == influence_type:
                 count += 1
         return count
 
@@ -154,7 +155,7 @@ class Player:
         player must have
         Return: True if the player has >= count, False otherwise
         '''
-        return (self.get_count(influence_type) > count)
+        return (self.get_count(influence_type) >= count)
 
     def must_coup(self):
         '''
@@ -177,18 +178,6 @@ class Player:
         '''
         self._influences[index] = InfluenceCard(influence_type.lower())
 
-    def has_received_action_message(self):
-        '''
-        Checks if this player has received the action list message yet
-        '''
-        return self._received_action_msg
-
-    def sent_action_message(self):
-        '''
-        Informs the Player object that it has now received the action message
-        '''
-        self._received_action_msg = True
-
     def get_embed(self, ctx):
         '''
         Generates the discord embed representing the Player
@@ -206,21 +195,24 @@ class Player:
         with only the information visible to other Players
         '''
         player_embed = self._get_basic_embed(show_influences=False)
-        player_embed.set_author(name=self._user.mention, icon_url=f"{self._user.avatar_url}'s Hand")
+        player_embed.title = "Player Hand"
         return player_embed
 
     def life_count(self):
         '''
         Gets the player's life count
         '''
-        return self._lives
+        count = 0
+        for influence in self._influences:
+            if influence.alive:
+                count += 1
+        return count
 
     def is_eliminated(self):
         '''
         Checks if the player is eliminated from the game
         '''
-        return not (self._lives > 0)
-
+        return not (self.life_count() > 0)
 
     def _get_basic_embed(self, show_influences):
         # Set up the embed
@@ -239,7 +231,7 @@ class Player:
                     if show_influences:
                         influences.append(f"{influence.type.capitalize()}")
                     else:
-                        influences.append("[UNKNOWN]")
+                        influences.append("[HIDDEN]")
                 else:
                     # influence card is dead (revealed)
                     influences.append(f"~~{influence.type.capitalize()}~~")

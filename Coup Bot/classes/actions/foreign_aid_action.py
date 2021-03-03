@@ -82,6 +82,14 @@ class ForeignAid(Action):
         '''
         self._done_by.add_coins(-2)
 
+    @staticmethod
+    def is_super():
+        '''
+        Checks if this Action is a super (such as Double Contessa), and
+        requires a card swap either way
+        '''
+        return False
+
     @classmethod
     def available_responses(cls, channel_mention):
         '''
@@ -103,4 +111,3 @@ class ForeignAid(Action):
         the action is completed successfully
         '''
         return f"{self._done_by.get_user().mention} took foreign aid of 2 coins"
-

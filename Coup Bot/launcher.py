@@ -44,7 +44,6 @@ bot = CoupBot(
 @bot.event
 async def on_ready():
     print(f"{bot.user} has successfully connected to Discord!")
-    await bot.change_presence(activity=discord.Game(name=f"{PREFIX}help"))
 
 
 

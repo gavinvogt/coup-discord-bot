@@ -15,6 +15,7 @@ class Exchange(Action):
 
     REQUIRED_CARDS = {'ambassador': 1}
     AVAILABLE_RESPONSES = ["challenge"]
+    AMBASSADOR_WAIT_TIME = 6  # waits 6 seconds before allowing ambassador
 
     def __init__(self, player):
         '''
@@ -22,6 +23,9 @@ class Exchange(Action):
         player: Player representing the player who is exchanging
         '''
         super().__init__(player)
+        self._time_up = False
+        self._cards = [None, None]
+        self._swapped = False      # whether swap has occurred
 
     @staticmethod
     def is_influence_power():
@@ -61,6 +65,68 @@ class Exchange(Action):
         '''
         return 0
 
+    @classmethod
+    def get_wait_time(cls):
+        '''
+        Gets the number of seconds that must pass before the action can continue
+        '''
+        return cls.AMBASSADOR_WAIT_TIME
+
+    def set_time_up(self, time_up):
+        '''
+        Sets whether the time is up
+        time_up: bool, representing whether the time to challenge is up
+        '''
+        self._time_up = time_up
+
+    def time_is_up(self):
+        '''
+        Checks if the time is up (can no longer challenge)
+        '''
+        return self._time_up
+
+    def has_swapped(self):
+        '''
+        Checks if the card swap has already occurred
+        '''
+        return self._swapped
+
+    def perform_swap(self, player_card, i, game):
+        '''
+        Performs the card swap and shuffles the pile
+        player_card: int, representing the index of the player's card they are swapping.
+        If `player_card` is None, represents no swap taking place
+        i: int, representing the index of the card to swap with
+        game: CoupGame where swap is occurring
+        '''
+        self._swapped = True
+        if player_card is not None:
+            # Swap the player's card with self._cards[i]
+            card = self._done_by[player_card].type
+            self._done_by.set_influence(player_card, self._cards[i])
+            self._cards[i] = card
+
+        # Add cards back into pile and shuffle
+        for card in self._cards:
+            game.add_card(card)
+        game.shuffle()
+
+    def get_card(self, i):
+        '''
+        Returns the card at index `i`
+        i: int, representing the index of the card to get
+        Return: str, representing the influence type
+        '''
+        return self._cards[i]
+
+    def set_card(self, i, card):
+        '''
+        Sets the card at index `i` to `card`
+        i: int, representing the index of the card
+        card: str, representing the influence type
+        '''
+        self._cards[i] = card
+
     def wins_challenge(self):
         '''
         Checks if the claimed Ambassador wins the challenge
@@ -71,15 +137,21 @@ class Exchange(Action):
         '''
         Performs an action to the player(s)
         '''
-        #self._done_by
-
-        TODO
+        self._done_by.must_swap = True
 
     def undo_action(self):
         '''
         Undoes the action to the player(s)
         '''
-        TODO
+        self._done_by.must_swap = False
+
+    @staticmethod
+    def is_super():
+        '''
+        Checks if this Action is a super (such as Double Contessa), and
+        requires a card swap either way
+        '''
+        return False
 
     @classmethod
     def available_responses(cls, channel_mention):
@@ -102,6 +174,3 @@ class Exchange(Action):
         the action is completed successfully
         '''
         return f"{self._done_by.get_user().mention} exchanged influences"
-
-
-

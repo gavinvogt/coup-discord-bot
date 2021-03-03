@@ -22,7 +22,7 @@ class ContessaBlock(Response):
         player1: Player representing the player who is responding
         player2: Player representing the player who made the original action
         '''
-        super().__init__(self, player1, player2)
+        super().__init__(player1, player2)
 
     @staticmethod
     def is_influence_power():
@@ -38,16 +38,24 @@ class ContessaBlock(Response):
         '''
         return self._response_by.has("contessa")
 
+    @staticmethod
+    def is_super():
+        '''
+        Checks if this Response is a super (such as Double Contessa), and
+        requires a card swap either way
+        '''
+        return False
+
     def attempt_message(self):
         '''
         Gets the string representing the message for when
         the response is attempted
         '''
-        return f"{self._response_by.get_user().mention} attempts to block {self._response_to.get_user().mention}'s assassination with Contesssa"
+        return f"{self._response_by.get_user().mention} attempts to block {self._response_to.get_user().mention}'s assassination with `Contesssa`"
 
     def complete_message(self):
         '''
         Gets the string representing the message for when
         the response is completed successfully
         '''
-        raise f"{self._response_by.get_user().mention} blocked {self._response_to.get_user().mention}'s assassination with Contessa"
+        raise f"{self._response_by.get_user().mention} blocked {self._response_to.get_user().mention}'s assassination with `Contessa`"
