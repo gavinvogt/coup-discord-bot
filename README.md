@@ -15,4 +15,4 @@ but that's an entire different discussion.
 
 Overall, though, I am happy with how the bot turned out. It's satisfying to see the generally-written
 code be able to handle specific cases properly (particularly through my use of the `cog_after_invoke()`
-method in `game_cog.py` and the command checks I wrote in `helpers/command_checks.py`.
+method in `game_cog.py` and the command checks I wrote in `helpers/command_checks.py`).
