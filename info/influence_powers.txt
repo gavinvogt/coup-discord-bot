@@ -1,0 +1,34 @@
+------------------------------- Influence Actions -------------------------------
+
+Contessa:
+  - N/A
+Assassin:
+  - assassinate another player for 3 coins
+Captain:
+  - steal 2 coins from another player (or 1 if they only have one)
+Ambassador:
+  - view 2 random cards in pile and swap 0 - 1 cards
+Duke:
+  - tax (take 3 coins)
+General actions:
+  - income (take 1 coin)
+  - foreign aid (take 2 coins)
+  - coup (coup another player for 7 coins)
+
+
+------------------------------ Influence Responses ------------------------------
+
+Contessa:
+  - block an assassination attempt
+Assassin:
+  - N/A
+Captain:
+  - block steal
+Ambassador:
+  - block steal
+Duke:
+  - block foreign aid
+Double Contessa (SPECIAL RULE):
+  - block a coup and shuffle both cards into deck to randomly choose two
+General actions:
+  - challenge another player's claim
