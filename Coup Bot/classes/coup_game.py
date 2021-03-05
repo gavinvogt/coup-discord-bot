@@ -77,6 +77,7 @@ class CoupGame:
         self._players = {}         # dict of user_id : Player
         self._draw_pile = []       # list of cards, where last card is the "top"
         self._dead_pile = {}       # maps card type to count
+        self._total_cards = 0
 
         # Information about the turn rotation
         self._order = []           # game rotation order as list of user IDs
@@ -492,7 +493,7 @@ class CoupGame:
 
     def get_next_turn(self):
         '''
-        Gets the Player whos turn is next
+        Gets the Player whose turn is next
         '''
         next_turn = self._turn + 1
         if next_turn > (self.player_count() - 1):
@@ -618,8 +619,8 @@ class CoupGame:
             for i in range(len(influences)):
                 influence = influences[i]
                 if influence is not None and influence.alive:
-                    num_to_swap = cards_to_swap.get(influence.type, 0)
-                    if num_to_swap > 0:
+                    cur_num_to_swap = cards_to_swap.get(influence.type, 0)
+                    if cur_num_to_swap > 0:
                         # Add the card to the draw pile
                         self._draw_pile.append(influence.type)
                         swapped_in.append(influence)
@@ -745,6 +746,7 @@ class CoupGame:
         # Set up the embed
         summary_embed = Embed(
             title = "Game Summary",
+            description = f"Total cards: {self._total_cards}",
             color = Color.green(),
         )
 
@@ -782,17 +784,28 @@ class CoupGame:
         game will no longer be hard pending, automatically sets `pending`
         to false and updates the game stage.
         '''
-        if self.action is None:
+        if self.response is None:
             # player used Die as their response
             self.response = die_response
         else:
             # player was forced to use Die
             self._deaths.append(die_response)
 
+        # Add to dead pile
+        for card_type in die_response.get_killed():
+            self.add_to_dead_pile(card_type)
+
         # Check pending status
         if not self.hard_pending:
             self._stage = self.COMPLETE_STAGE
             self.pending = False
+
+    def add_to_dead_pile(self, card_type):
+        '''
+        Adds a card type to the dead pile
+        '''
+        # accidentally re-wrote a method and used it; not worth to fix it
+        self.add_dead(card_type)
 
     def dead_embed(self):
         '''
@@ -803,8 +816,8 @@ class CoupGame:
             color = Color.red(),
         )
         description = "```"
-        for card_type, dead_count in self._dead_pile:
-            description += f"{card_type.capitalize()} (x{dead_count})"
+        for card_type, dead_count in self._dead_pile.items():
+            description += f"{card_type.capitalize()} (x{dead_count})" + "\n"
         dead_pile_embed.description = description + " ```"
         return dead_pile_embed
 
@@ -954,8 +967,8 @@ class CoupGame:
         '''
         Adds all of the cards to the draw pile (NOT SHUFFLED)
         '''
-        # Need at least 2 larger than (cards per player X player count)
-        num_needed = self._start_influences * self.player_count() + 2
+        # Need at over 2 larger than (cards per player X player count)
+        num_needed = self._start_influences * self.player_count() + 3
         num_types = len(self.CARD_TYPES)
         if self._preferred_card_count is not None and self._preferred_card_count >= num_needed:
             count_per_card = int(self._preferred_card_count / num_types)
@@ -972,3 +985,6 @@ class CoupGame:
         for card_type in self.CARD_TYPES:
             for _ in range(count_per_card):
                 self._draw_pile.append(card_type)
+
+        # Set number of total cards
+        self._total_cards = len(self._draw_pile)

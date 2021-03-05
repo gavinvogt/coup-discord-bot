@@ -58,4 +58,4 @@ class DoubleContessaBlock(Response):
         Gets the string representing the message for when
         the response is completed successfully
         '''
-        raise f"{self._response_by.get_user().mention} blocked {self._response_to.get_user().mention}'s coup with `Double Contesssa`"
+        return f"{self._response_by.get_user().mention} blocked {self._response_to.get_user().mention}'s coup with `Double Contesssa`"

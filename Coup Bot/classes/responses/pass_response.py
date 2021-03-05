@@ -57,4 +57,4 @@ class Pass(Response):
         Gets the string representing the message for when
         the response is completed successfully
         '''
-        raise f"{self._response_by.get_user().mention} passed on responding to {self._response_to.get_user().mention}'s action"
+        return f"{self._response_by.get_user().mention} passed on responding to {self._response_to.get_user().mention}'s action"

@@ -58,4 +58,4 @@ class DukeBlock(Response):
         Gets the string representing the message for when
         the response is completed successfully
         '''
-        raise f"{self._response_by.get_user().mention} blocked {self._response_to.get_mention()}'s foreign aid with `Duke`"
+        return f"{self._response_by.get_user().mention} blocked {self._response_to.get_mention()}'s foreign aid with `Duke`"

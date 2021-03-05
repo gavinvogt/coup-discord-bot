@@ -15,7 +15,7 @@ class Exchange(Action):
 
     REQUIRED_CARDS = {'ambassador': 1}
     AVAILABLE_RESPONSES = ["challenge"]
-    AMBASSADOR_WAIT_TIME = 6  # waits 6 seconds before allowing ambassador
+    AMBASSADOR_WAIT_TIME = 8  # waits 8 seconds before allowing ambassador
 
     def __init__(self, player):
         '''

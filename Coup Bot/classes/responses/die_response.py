@@ -25,6 +25,7 @@ class Die(Response):
         '''
         super().__init__(player)
         self._indexes = indexes_to_kill
+        self._killed = []
 
     @staticmethod
     def is_influence_power():
@@ -45,7 +46,9 @@ class Die(Response):
         '''
         # kill the cards
         for index in self._indexes:
-            self._response_by[index].alive = False
+            card = self._response_by[index]
+            card.alive = False
+            self._killed.append(card.type)
 
         # change the number of cards the player needs to kill
         self._response_by.must_kill -= len(self._indexes)
@@ -72,3 +75,9 @@ class Die(Response):
         the response is completed successfully
         '''
         return self.attempt_message()
+
+    def get_killed(self):
+        '''
+        Gets the list of card types killed in this Die response
+        '''
+        return self._killed
