@@ -15,7 +15,8 @@ and clean. It quickly became more time-effective to just put all the code for ea
 that method's body instead of scrolling to the bottom, adding a "private" method, and finding the
 method I was writing in the first place to complete the method. The number of lines of code in some
 methods is rather frightening. I also may have gotten overexcited with abstract base classes,
-inheritance, and properties, but that's an entire different discussion.
+inheritance, and properties, but that's an entire different discussion. Writing 95% of the bot
+in ~5 days was evidently not the move.
 
 Overall, though, I am happy with how the bot turned out. It's satisfying to see the generally-written
 code be able to handle specific cases properly (particularly through my use of the `cog_after_invoke()`
@@ -25,4 +26,5 @@ method in `cogs/game_cog.py` and the command checks I wrote in `helpers/command_
 If I had to rewrite the bot, I would make a separate class representing the `CardPile` and store it
 as a field in `CoupGame`, since I had a multitude of methods that just referred to the card pile. I
 would also store the turn order in another class to make it easier to deal with the turn order and
-whose turn is whose.
+whose turn is whose. There is a known bug where sometimes a swap occurs, but it doesn't correctly
+tell the player what cards they had swapped (says "Swapped your , for ").
