@@ -83,7 +83,7 @@ class GameCog(BaseCog, name="game"):
 
     ################################### ACTION COMMANDS ################################
 
-    @commands.command(name="steal", help=STEAL_HELP)
+    @commands.command(name="steal", help=STEAL_HELP, aliases=['captain'])
     @others_in_game(1, "steal from")
     @under_ten_coins()
     @has_enough_coins(actions.Steal.cost())
@@ -123,7 +123,7 @@ class GameCog(BaseCog, name="game"):
             raise commands.CheckFailure(f"{user.mention} is too broke to steal from")
         await self.pre_action_check(ctx)
 
-    @commands.command(name="exchange", help=EXCHANGE_HELP)
+    @commands.command(name="exchange", help=EXCHANGE_HELP, aliases=['ambassador'])
     @under_ten_coins()
     @has_enough_coins(actions.Exchange.cost())
     @is_turn()
@@ -254,7 +254,7 @@ class GameCog(BaseCog, name="game"):
 
         await self._check_turn_over(ctx.channel, game, advance_if_possible=True)
 
-    @commands.command(name="assassinate", help=ASSASSINATE_HELP)
+    @commands.command(name="assassinate", help=ASSASSINATE_HELP, aliases=['assassin'])
     @others_in_game(1, "assassinate")
     @under_ten_coins()
     @has_enough_coins(actions.Assassinate.cost())
@@ -279,7 +279,7 @@ class GameCog(BaseCog, name="game"):
         await ctx.send(game.action.attempt_message())
         await user.send(embed=game.action.available_responses(ctx.channel.mention))
 
-    @commands.command(name="tax", help=TAX_HELP)
+    @commands.command(name="tax", help=TAX_HELP, aliases=['duke'])
     @under_ten_coins()
     @has_enough_coins(actions.Tax.cost())
     @is_turn()
@@ -438,7 +438,7 @@ class GameCog(BaseCog, name="game"):
             elif isinstance(game.action, actions.ForeignAid):
                 # blocking foreign aid with Duke
                 influence = "duke"
-            elif isinstance(game.action, actions.ForeignAid):
+            elif isinstance(game.action, actions.LaunchCoup):
                 # blocking coup with Double Contessa
                 influence = "doublecontessa"
             elif isinstance(game.action, actions.Steal):
@@ -687,6 +687,17 @@ class GameCog(BaseCog, name="game"):
         game = self.bot.get_game(ctx.channel.id)
         if game.is_active():
             player = game.get_player(user.id)
+
+            # Kill their cards
+            cards_killed = []
+            for i in range(game.influences_per_player()):
+                card = player[i]
+                if card.alive:
+                    game.add_to_dead_pile(card.type)
+                    cards_killed.append(card.type.capitalize())
+            if len(cards_killed) > 0:
+                await ctx.send(f"{user.mention}'s {', '.join(cards_killed)} was killed")
+
             await self.bot.process_player_remove(ctx.channel, game, player)
         else:
             # game hasn't started yet
@@ -713,6 +724,17 @@ class GameCog(BaseCog, name="game"):
         else:
             player = game.get_player(ctx.author.id)
             await ctx.send(ctx.author.mention + " left the game")
+
+            # Kill their cards
+            cards_killed = []
+            for i in range(game.influences_per_player()):
+                card = player[i]
+                if card.alive:
+                    game.add_to_dead_pile(card.type)
+                    cards_killed.append(card.type.capitalize())
+            if len(cards_killed) > 0:
+                await ctx.send(f"{ctx.author.mention}'s {', '.join(cards_killed)} was killed")
+
             await self.bot.process_player_remove(ctx.channel, game, player)
 
 
@@ -790,6 +812,8 @@ class GameCog(BaseCog, name="game"):
         '''
         if game.soft_pending and not advance_if_possible:
             # game is soft pending and don't need to advance if necessary
+            if not game.hard_pending and game.action is not None:
+                await channel.send(f"Respond, or {game.get_next_turn().get_mention()} is next up")
             return
         elif game.is_over():
             # Send the last turn summary
