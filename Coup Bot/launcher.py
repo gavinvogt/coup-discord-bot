@@ -34,7 +34,7 @@ Developed by Gavin Vogt
 PREFIX = "c!"
 bot = CoupBot(
     command_prefix = PREFIX,
-    owner_id = 228724654670479360,
+    #owner_id = YOUR_DISCORD_ID,
     description = BOT_DESCRIPTION,
 )
 
