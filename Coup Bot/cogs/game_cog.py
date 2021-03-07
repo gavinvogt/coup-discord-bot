@@ -883,12 +883,12 @@ class GameCog(BaseCog, name="game"):
         action: Action or Response that needs to be swapped for
         revealed: bool, whether the cards were revealed
         '''
-        swapped_cards = game.swap_cards(player, action.REQUIRED_CARDS)  # CardSwap object
+        swapped_cards = game.swap_cards(player, action.REQUIRED_CARDS.copy())  # CardSwap object
         if revealed:
             card_text = swapped_cards.in_text()
         else:
             maybe_swapped = []
-            for influence_type, num in action.REQUIRED_CARDS:
+            for influence_type, num in action.REQUIRED_CARDS.items():
                 for _ in range(num):
                     maybe_swapped.append(influence_type.capitalize())
             card_text = f"(maybe) `{'`, `'.join(maybe_swapped)}`"
